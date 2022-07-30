@@ -33,5 +33,3 @@ CLS
 .\python.exe -m pip install --upgrade Werkzeug==2.1.2
 .\python.exe -m pip install --upgrade zipp==3.8.0
 .\python.exe -m pip install --upgrade requests==2.28.1
-
-PAUSE

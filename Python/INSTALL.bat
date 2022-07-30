@@ -1,5 +1,4 @@
 ECHO OFF
 CLS
-installDependencies.bat
-installModel.bat
-PAUSE
+CMD /c installDependencies.bat
+CMD /c installModel.bat
