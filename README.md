@@ -61,7 +61,7 @@ Note that:
 
 Send the request with `f` parameter referring to the path of the job file:
 ```javaScript
-var req = await fetch(`http://127.0.0.1:14377/batch`, {
+var req = await fetch(`http://127.0.0.1:14341/batch`, {
 	method : "POST",
 	body : JSON.stringify({f: "D:/test/batch/job.txt"}),
 	headers : {'Content-Type': 'application/json'}
