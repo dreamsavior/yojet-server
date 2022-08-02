@@ -1,7 +1,21 @@
+![enter image description here](https://github.com/dreamsavior/yojet-server/blob/main/res/yojet-logo.png?raw=true)
 # YOJET
 YOJET or **Y**our **O**wn **J**apanese **E**nglish **T**ranslator  is a free Japanese-English translation server. The aim of this application is to provide a hassle free Japanese-English translator service with a web translator and  REST API over HTTP.
 
 You can easily switch between the collection of translation model, for example **Sugoi Translator** model by Ming Shiba.
+
+![enter image description here](https://dreamsavior.net/wp-content/uploads/2022/08/2022-08-02-09_45_22-YOJET-Server-manager.png)
+*YOJET Server Manager*
+
+![enter image description here](https://dreamsavior.net/wp-content/uploads/2022/08/2022-07-23-13_22_01-.png)
+*Control from Systray*
+
+![enter image description here](https://dreamsavior.net/wp-content/uploads/2022/08/2022-08-02-09_49_31-Services.png)
+*Manage YOJET as a Window's service*
+
+![enter image description here](https://dreamsavior.net/wp-content/uploads/2022/07/2022-07-23-11_11_49-YOJET-Your-Own-Japanese-English-Translator-Personal-Microsoft%E2%80%8B-Edge.png)
+*Built in web translator*
+
 
 More about YOJET:
 https://dreamsavior.net/yojet/
@@ -62,6 +76,5 @@ The content of the result file from this example:
 {"text":"毎日私はご飯を食べます", "translated": "I eat every day.", "otherParameter": {"info":"YOJET will translate line by line so no matter how big the file you have it won't have a big impact on your computer's RAM."}}
 {"text":"何は同年もっともそうした入会屋というのの上が上るたです", "translated": "What's more, in the same year, that's one of the best admissions places in the world.", "otherparam":"3"}
 ```
-
 Note that
 The unicode and non ASCII character may be escaped in the result file. (Example, Store Unicode **string  `ø`  as  `\u00f8`  in JSON**)
