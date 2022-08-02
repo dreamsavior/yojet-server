@@ -4,14 +4,17 @@ YOJET or **Y**our **O**wn **J**apanese **E**nglish **T**ranslator  is a free Jap
 
 You can easily switch between the collection of translation model, for example **Sugoi Translator** model by Ming Shiba.
 
-![YOJET Server Manager](https://github.com/dreamsavior/yojet-server/blob/main/res/YOJET-service-manager.png?raw=true)
+![YOJET Server Manager](https://github.com/dreamsavior/yojet-server/blob/main/res/YOJET-service-ui.png?raw=true)
 *YOJET Server Manager*
+
 
 ![Control from Systray](https://github.com/dreamsavior/yojet-server/blob/main/res/systray.png?raw=true)
 *Control from Systray*
 
+
 ![Manage YOJET as a Windows service](https://github.com/dreamsavior/yojet-server/blob/main/res/YOJET-windows-service.png?raw=true)
 *Manage YOJET as a Window's service*
+
 
 ![Built-in web translator](https://github.com/dreamsavior/yojet-server/blob/main/res/YOJET-web-ui.png?raw=true)
 *Built-in web translator*
