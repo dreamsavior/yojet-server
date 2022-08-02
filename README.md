@@ -1,6 +1,8 @@
 # YOJET
 YOJET or **Y**our **O**wn **J**apanese **E**nglish **T**ranslator  is a free Japanese-English translation server. The aim of this application is to provide a hassle free Japanese-English translator service with a web translator and  REST API over HTTP.
 
+You can easily switch between the collection of translation model, for example **Sugoi Translator** model by Ming Shiba.
+
 More about YOJET:
 https://dreamsavior.net/yojet/
 
