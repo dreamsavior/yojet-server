@@ -35,17 +35,18 @@ click.secho = secho
 argumentList = sys.argv[1:]
  
 # Options
-options = "hsgn:p:m:"
+options = "hsgn:p:m:c:"
  
 # Long options
-long_options = ["help", "silent", "gpu", "host =", "port =", "model ="]
-status = "ready"
+long_options = ["help", "silent", "gpu", "host =", "port =", "model =", "config ="]
 silent=False
 port=14377
 host='0.0.0.0'
 gpu=False
 selectedModel = "default"
 
+
+status = "ready"
 def translate(translator, text):
     result = translator.translate(text)
     return result
@@ -65,7 +66,7 @@ def batchTranslate(translator, source):
         return
 
     temp = source + ".res~"
-    result = source + ".res"
+    result = source + ".translated"
 
     def complete():
         print("Batch complete! Result is:", result)
@@ -88,13 +89,38 @@ def batchTranslate(translator, source):
             #print(line)
             thisObj = json.loads(line)
             print("Job",currentProgress, "translating:", thisObj["text"])
-            thisObj["text"] = translate(translator, thisObj["text"])
-            tempFile.write(json.dumps(thisObj)+"\n")
+            thisObj["translated"] = translate(translator, thisObj["text"])
+            tempFile.write(json.dumps(thisObj, ensure_ascii=False)+"\n")
             currentProgress += 1
     tempFile.close()
     os.rename(temp, result)
     return complete()
 
+def setConfiguration(configFile=""):
+    if not configFile:
+        configFile = "../config.json"
+    if configFile == "default":
+        configFile = "../config.json"
+        
+    print("Setting configuration via file", configFile)
+
+    global selectedModel
+    global silent
+    global port
+    global host
+    global gpu
+    if not os.path.isfile(configFile):
+        print("Error! File", configFile, "is not exist!")
+        return
+    
+    configString  = open(configFile, 'r', encoding="UTF-8")
+    config = json.load(configString)
+    print("Config is:", config)
+
+    selectedModel = config['model']
+    host = config['host']
+    port = config['port']
+    gpu = config['useGpu']
 
 def runService(host, port, gpu, silent):
     from fairseq.models.transformer import TransformerModel
@@ -166,6 +192,15 @@ def runService(host, port, gpu, silent):
         print(CEND)
         return Response(finalResult, mimetype='text/json')
 
+    @app.route("/batch", methods = ['POST'])
+    @cross_origin()
+    def processBatchFile():
+        data = request.get_json()
+        filePath = data.get("f")
+        if not silent: print(CBEIGE+"Batch translate :"+CGREY, filePath)
+        batchTranslate(ja2en, filePath)
+        return Response('"COMPLETED"', mimetype='text/json')
+
     @app.route("/", methods = ['POST'])
     @cross_origin()
     def processPost():
@@ -218,6 +253,9 @@ CLI Args:
     -g / --gpu
         Run on GPU mode instead of CPU
 
+    -c / --config
+        Set configuration with config file
+
     -s / --silent
         Suppress message.
 
@@ -233,7 +271,8 @@ def init():
     global host
     global gpu
 
-    print(CYELLOW+"Fairseq"+CEND+" with Sugoi Translator's pre-trained model. Flask server mod for Translator++")
+    print("Welcome to "+CYELLOW+"YOJET SERVER"+CEND)
+    print("© Dreamsavior.")
     print("Use arg -h to display the help menu")
     print(CBLUE+"===================================================================================="+CEND)
     try:
@@ -246,7 +285,9 @@ def init():
             if currentArgument in ("-h", "--Help"):
                 getHelp()
                 quit()
-                
+            elif currentArgument in ("-c", "--config"):
+                setConfiguration(currentValue)
+
             elif currentArgument in ("-s", "--silent"):
                 silent = True
 
