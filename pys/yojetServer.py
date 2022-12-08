@@ -5,6 +5,11 @@ from flask import Flask
 from flask import request, Response
 from flask import render_template, jsonify
 from flask_cors import CORS, cross_origin
+import glob
+
+# change directory to the location of the script
+os.chdir(os.path.dirname(__file__))
+
 
 os.system("")
 CEND    = '\33[0m'
@@ -17,8 +22,137 @@ CVIOLET = '\33[35m'
 CBEIGE  = '\33[36m'
 CWHITE  = '\33[37m'
 
-# change directory to the location of the script
-os.chdir(os.path.dirname(__file__))
+
+
+# Handle cache
+import sqlite3
+tableName = "cache"
+con = sqlite3.connect("../db/cache.db", check_same_thread=False)
+db = con.cursor()
+
+res = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='"+tableName+"'")
+if res.fetchone() is None:
+    print("Table "+tableName+" is not exist! creating one.")
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS cache (
+            original TEXT PRIMARY KEY,
+            translation TEXT NOT NULL,
+            UNIQUE(original)
+        )
+    """)
+
+def dbAddCache(originalText, translationResult):
+    originalText = originalText or []
+    translationResult = translationResult or []
+    if "".join(originalText) == "": return
+    if "".join(translationResult) == "": return
+    
+    valuestr = []
+    values = []
+    index = 0
+    for line in translationResult:
+        line = line or ""
+        if line != "": 
+            valuestr.append("(?, ?)")
+            values.append(originalText[index])
+            values.append(line)
+        index += 1
+    queryStr = """INSERT OR IGNORE INTO cache(original, translation) VALUES """+",".join(valuestr)
+    db.execute(queryStr, values)
+    con.commit()
+
+
+
+def loadFromCache(keywords):
+    result = []
+    uncached = []
+    uncachedIndexes =[]
+    index = 0
+    for line in keywords:
+        res = db.execute("SELECT translation FROM cache WHERE original=?", [line])
+        translated = res.fetchone()
+        if translated is None: 
+            result.append("")
+            uncached.append(line)
+            uncachedIndexes.append(index)
+        else:
+            result.append(translated[0])
+        index += 1
+    return {
+        "cached":result,
+        "uncached":uncached,
+        "uncachedIndexes":uncachedIndexes
+    }
+
+def mergeCache(translationResult, cacheResult):
+    translationResult = translationResult or []
+    cacheResult = cacheResult or []
+    if len(cacheResult) == 0: return translationResult
+    result = []
+    index = 0
+    for line in translationResult:
+        line = line or ""
+        if line != "": 
+            result.append(line)
+        else:
+            result.append(cacheResult[index] or "")
+        index += 1
+    return result
+
+# end of cache handler
+def parseModelId(modelId):
+    modelInfo = {
+        'name': 'name',
+        'engine': 'fairseq',
+        'version': '1.0',
+        'langFrom': 'ja',
+        'langTo':'en'
+    }
+
+    segm = modelId.split("-")
+    modelInfo["name"] = segm[0] or "name"
+    modelInfo["engine"] = segm[1] or "fairseq"
+    modelInfo["version"] = segm[2] or "1.0"
+
+    if len(segm) >= 4 :
+        langList = segm[3].split("_")
+        modelInfo["langFrom"] = langList[0] or "ja"
+        modelInfo["langTo"] = langList[1] or "en"
+
+    return modelInfo
+
+def getConfiguration(configFile=""):
+    if not configFile:
+        configFile = "../config.json"
+    if configFile == "default":
+        configFile = "../config.json"
+
+    if not os.path.isfile(configFile):
+        print("Error! File", configFile, "is not exist!")
+        return
+    
+    configString  = open(configFile, 'r', encoding="UTF-8")
+    config = json.load(configString)
+    return {
+        "configPath": configFile,
+        "info":config,
+        "model":parseModelId(config['model'])
+    }
+
+
+def exec_full(filepath):
+    global_namespace = {
+        "__file__": filepath,
+        "__name__": "__main__",
+    }
+    with open(filepath, 'rb') as file:
+        exec(compile(file.read(), filepath, 'exec'), global_namespace)
+
+thisConfig = getConfiguration()
+print(thisConfig)
+if thisConfig["model"]["engine"] == "ct2": 
+    exec_full("yojetServerCT2.py")
+    sys.exit(0)
 
 
 def secho(text, file=None, nl=None, err=None, color=None, **styles):
@@ -44,12 +178,37 @@ port=14377
 host='0.0.0.0'
 gpu=False
 selectedModel = "default"
-
+modelDir='../models/sugoi-fairseq-levi/japaneseModel/'
+modelFileName="big.pretrain.pt"
+spModel = '../models/sugoi-fairseq-levi/sp_model/spm.ja.nopretok.model'
+langFrom = "ja"
+langTo = "en"
+useCache = True
 
 status = "ready"
-def translate(translator, text):
-    result = translator.translate(text)
-    return result
+
+
+
+if useCache:
+    def translate(translator, originalTexts):
+        cacheInfo = loadFromCache(originalTexts)
+        print("Cache info:", cacheInfo)
+        if len(cacheInfo["uncached"]) == 0: return cacheInfo["cached"]
+
+        translated = translator.translate(cacheInfo["uncached"])
+        result = cacheInfo["cached"]
+
+        translatedIndex = 0
+        for cacheIndex in cacheInfo["uncachedIndexes"]:
+            result[cacheIndex] = translated[translatedIndex]
+            translatedIndex += 1
+        
+        dbAddCache(cacheInfo["uncached"], translated)
+        return result
+else:
+    def translate(translator, text):
+        result = translator.translate(text)
+        return result        
 
 def file_len(fname):
     if not os.path.isfile(fname):
@@ -96,31 +255,46 @@ def batchTranslate(translator, source):
     os.rename(temp, result)
     return complete()
 
-def setConfiguration(configFile=""):
-    if not configFile:
-        configFile = "../config.json"
-    if configFile == "default":
-        configFile = "../config.json"
-        
-    print("Setting configuration via file", configFile)
-
+def applyConfiguration(configFile=""):
     global selectedModel
     global silent
     global port
     global host
     global gpu
-    if not os.path.isfile(configFile):
-        print("Error! File", configFile, "is not exist!")
-        return
-    
-    configString  = open(configFile, 'r', encoding="UTF-8")
-    config = json.load(configString)
-    print("Config is:", config)
+    global modelFileName
+    global modelDir
+    global spModel
+    global langFrom
+    global langTo
 
+    configuration = getConfiguration(configFile)
+    if configuration is None: return
+    print("Config is:", configuration)
+    config = configuration["info"]
     selectedModel = config['model']
     host = config['host']
     port = config['port']
     gpu = config['useGpu']
+
+
+    modelInfo = parseModelId(selectedModel)
+    langFrom = modelInfo["langFrom"]
+    langTo = modelInfo["langTo"]
+
+    try:
+        thePath = glob.glob('../models/'+selectedModel+'/**/*.pt', recursive=True)[0]
+        modelFileName=os.path.basename(thePath)
+        modelDir=os.path.dirname(thePath)
+        print("Model filename : "+modelFileName)
+        print("Model dir : "+modelDir)
+
+        spModel = glob.glob('../models/'+selectedModel+'/**/spm.'+langFrom+'.*.model', recursive=True)[0]
+        print("Sentence piece : ", spModel)
+
+    except:
+        print("no model found")
+
+
 
 def runService(host, port, gpu, silent):
     from fairseq.models.transformer import TransformerModel
@@ -128,12 +302,12 @@ def runService(host, port, gpu, silent):
     log.setLevel(logging.ERROR)
 
     ja2en = TransformerModel.from_pretrained(
-        '../models/sugoi-fairseq-3.3/japaneseModel/',
-        checkpoint_file='big.pretrain.pt',
-        source_lang = "ja",
-        target_lang = "en",
+        modelDir,
+        checkpoint_file = modelFileName,
+        source_lang = langFrom,
+        target_lang = langTo,
         bpe='sentencepiece',
-        sentencepiece_model='../models/sugoi-fairseq-3.3/sp_model/spm.ja.nopretok.model',
+        sentencepiece_model=spModel,
         no_repeat_ngram_size=3,
         beam=5
         # replace_unk=True
@@ -271,7 +445,7 @@ def init():
     global host
     global gpu
 
-    print("Welcome to "+CYELLOW+"YOJET SERVER"+CEND)
+    print("Welcome to "+CYELLOW+"YOJET SERVER"+CEND+" Ver. 0.2")
     print("© Dreamsavior.")
     print("Use arg -h to display the help menu")
     print(CBLUE+"===================================================================================="+CEND)
@@ -286,7 +460,8 @@ def init():
                 getHelp()
                 quit()
             elif currentArgument in ("-c", "--config"):
-                setConfiguration(currentValue)
+                #setConfiguration(currentValue)
+                applyConfiguration()
 
             elif currentArgument in ("-s", "--silent"):
                 silent = True
@@ -310,7 +485,7 @@ def init():
     processor = CYELLOW+"NO"+CEND
     if gpu: processor = CGREEN+"YES"+CEND
 
-    print(CBEIGE,'Starting server',CYELLOW, host, CBEIGE, 'on port', CYELLOW, port, CBEIGE, 'use GPU:', processor, CEND)
+    print(CBEIGE,'Listening',CYELLOW, host, CBEIGE, 'port', CYELLOW, port, CBEIGE, 'use GPU:', processor, CEND)
     print('Selected model:', selectedModel)
     runService(host, port, gpu, silent)
 

@@ -1,0 +1,392 @@
+import getopt, sys, os, json, signal
+import logging
+import click
+from flask import Flask
+from flask import request, Response
+from flask import render_template, jsonify
+from flask_cors import CORS, cross_origin
+import glob
+
+os.system("")
+CEND    = '\33[0m'
+CGREY   = '\33[90m'
+CRED    = '\33[91m'
+CGREEN  = '\33[92m'
+CYELLOW = '\33[93m'
+CBLUE   = '\33[94m'
+CVIOLET = '\33[35m'
+CBEIGE  = '\33[36m'
+CWHITE  = '\33[37m'
+
+# change directory to the location of the script
+os.chdir(os.path.dirname(__file__))
+"""
+def exec_full(filepath):
+    global_namespace = {
+        "__file__": filepath,
+        "__name__": "__main__",
+    }
+    with open(filepath, 'rb') as file:
+        exec(compile(file.read(), filepath, 'exec'), global_namespace)
+
+
+exec_full("test.py")
+print("End of execution")
+sys.exit(0)
+"""
+
+
+
+
+
+def secho(text, file=None, nl=None, err=None, color=None, **styles):
+    pass
+
+def echo(text, file=None, nl=None, err=None, color=None, **styles):
+    pass
+
+click.echo = echo
+click.secho = secho
+
+# Remove 1st argument from the
+# list of command line arguments
+argumentList = sys.argv[1:]
+ 
+# Options
+options = "hsgn:p:m:c:"
+ 
+# Long options
+long_options = ["help", "silent", "gpu", "host =", "port =", "model =", "config ="]
+silent=False
+port=14377
+host='0.0.0.0'
+gpu=False
+selectedModel = "default"
+modelDir='../models/sugoi-fairseq-levi/japaneseModel/'
+modelFileName="big.pretrain.pt"
+spModel = '../models/sugoi-fairseq-levi/sp_model/spm.ja.nopretok.model'
+langFrom = "ja"
+langTo = "en"
+
+status = "ready"
+
+def parseModelId(modelId):
+    modelInfo = {
+        'name': 'name',
+        'engine': 'fairseq',
+        'version': '1.0',
+        'langFrom': 'ja',
+        'langTo':'en'
+    }
+
+    segm = modelId.split("-")
+    print(segm)
+    modelInfo["name"] = segm[0] or "name"
+    modelInfo["engine"] = segm[1] or "fairseq"
+    modelInfo["version"] = segm[2] or "1.0"
+
+    if len(segm) >= 4 :
+        langList = segm[3].split("_")
+        modelInfo["langFrom"] = langList[0] or "ja"
+        modelInfo["langTo"] = langList[1] or "en"
+
+    return modelInfo
+
+
+def translate(translator, text):
+    result = translator.translate(text)
+    return result
+
+def file_len(fname):
+    if not os.path.isfile(fname):
+        return 0
+    with open(fname) as f:
+        for i, l in enumerate(f):
+            pass
+    return i + 1
+
+# source is accessible file from server
+def batchTranslate(translator, source):
+    if not os.path.isfile(source):
+        print("Error! File", source, "is not exist!")
+        return
+
+    temp = source + ".res~"
+    result = source + ".translated"
+
+    def complete():
+        print("Batch complete! Result is:", result)
+        return result
+
+    if os.path.isfile(result):
+        return complete()
+
+    currentProgress = 0
+    existingProgress = file_len(temp)
+    tempFile  = open(temp, 'a', encoding="UTF-8")
+
+    print("Existing progress is", existingProgress)
+    with open(source, encoding="UTF-8") as infile:
+        for line in infile:
+            if (currentProgress < existingProgress):
+                currentProgress += 1
+                continue
+
+            #print(line)
+            thisObj = json.loads(line)
+            print("Job",currentProgress, "translating:", thisObj["text"])
+            thisObj["translated"] = translate(translator, thisObj["text"])
+            tempFile.write(json.dumps(thisObj, ensure_ascii=False)+"\n")
+            currentProgress += 1
+    tempFile.close()
+    os.rename(temp, result)
+    return complete()
+
+def setConfiguration(configFile=""):
+    if not configFile:
+        configFile = "../config.json"
+    if configFile == "default":
+        configFile = "../config.json"
+        
+    print("Setting configuration via file", configFile)
+
+    global selectedModel
+    global silent
+    global port
+    global host
+    global gpu
+    global modelFileName
+    global modelDir
+    global spModel
+    global langFrom
+    global langTo
+
+    if not os.path.isfile(configFile):
+        print("Error! File", configFile, "is not exist!")
+        return
+    
+    configString  = open(configFile, 'r', encoding="UTF-8")
+    config = json.load(configString)
+    print("Config is:", config)
+
+    selectedModel = config['model']
+    host = config['host']
+    port = config['port']
+    gpu = config['useGpu']
+
+
+    modelInfo = parseModelId(selectedModel)
+    langFrom = modelInfo["langFrom"]
+    langTo = modelInfo["langTo"]
+
+    try:
+        thePath = glob.glob('../models/'+selectedModel+'/**/*.pt', recursive=True)[0]
+        modelFileName=os.path.basename(thePath)
+        modelDir=os.path.dirname(thePath)
+        print("Model filename : "+modelFileName)
+        print("Model dir : "+modelDir)
+
+        spModel = glob.glob('../models/'+selectedModel+'/**/spm.'+langFrom+'.*.model', recursive=True)[0]
+        print("Sentence piece : ", spModel)
+
+    except:
+        print("no model found")
+
+
+
+def runService(host, port, gpu, silent):
+    from fairseq.models.transformer import TransformerModel
+    log = logging.getLogger('fairseq.models.fairseq_model')
+    log.setLevel(logging.ERROR)
+
+    ja2en = TransformerModel.from_pretrained(
+        modelDir,
+        checkpoint_file = modelFileName,
+        source_lang = langFrom,
+        target_lang = langTo,
+        bpe='sentencepiece',
+        sentencepiece_model=spModel,
+        no_repeat_ngram_size=3,
+        beam=5
+        # replace_unk=True
+        # is_gpu=True
+    )
+    if gpu:
+        ja2en.cuda()
+
+    app = Flask(__name__)
+    cors = CORS(app)    
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+
+
+    def run_on_start(*args, **argv):
+        app.logger.info("Server has started!")
+    run_on_start()
+
+    @app.before_first_request
+    def before_first_request():
+        app.logger.info("before_first_request")
+    
+    @app.route("/", methods = ['GET'])
+    def index():
+        f = open("./templates/index.html", "r")
+        return f.read()
+        #return render_template("index.html")
+
+    @app.route("/favicon.ico", methods = ['GET'])
+    def getFavicon():
+        f = open("./templates/favicon.ico", "rb")
+        return Response(f.read(), mimetype='image/x-icon')  
+        #return render_template("index.html")
+
+    @app.route("/status", methods = ['GET'])
+    def status():
+        return Response("READY", mimetype='text/plain')
+
+    @app.route("/shutdown", methods = ['GET'])
+    def shutdown():
+        os.kill(os.getpid(), signal.SIGINT)
+        return Response("READY", mimetype='text/plain')    
+
+
+    app.config['CORS_HEADERS'] = 'Content-Type'
+
+    @app.route("/translate", methods = ['POST'])
+    @cross_origin()
+    def processTranslation():
+        data = request.get_json()
+        content = data.get("t")
+        print(CGREY)
+        if not silent: print(CBEIGE+"Incoming text:"+CGREY, content)
+        finalResult = json.dumps(translate(ja2en, content))
+        if not silent: print(CBEIGE+"Translated:"+CGREY, finalResult)
+        print(CEND)
+        return Response(finalResult, mimetype='text/json')
+
+    @app.route("/batch", methods = ['POST'])
+    @cross_origin()
+    def processBatchFile():
+        data = request.get_json()
+        filePath = data.get("f")
+        if not silent: print(CBEIGE+"Batch translate :"+CGREY, filePath)
+        batchTranslate(ja2en, filePath)
+        return Response('"COMPLETED"', mimetype='text/json')
+
+    @app.route("/", methods = ['POST'])
+    @cross_origin()
+    def processPost():
+        data = request.get_json()
+        message = data.get("message")
+        content = data.get("content")
+
+        if (message == "translate sentences"):
+            print(CGREY)
+            if not silent: print(CBEIGE+"Incoming text:"+CGREY, content)
+            finalResult = json.dumps(translate(ja2en, content))
+            if not silent: print(CBEIGE+"Translated:"+CGREY, finalResult)
+            print(CEND)
+            return finalResult
+
+        if (message == "batch"):
+            result = batchTranslate(ja2en, content)
+            return json.dumps(result)
+
+        if (message == "status"):
+            return json.dumps(status)
+
+        if (message == "close server"):
+            #shutdown_server()
+            print("Received a request to shut down the server.")
+            print("SHUTING DOWN SERVER!")
+            os.kill(os.getpid(), signal.SIGINT)
+
+
+    app.run(host=host, port=port)
+    print("Server is running")
+
+
+def getHelp():
+    print('''
+Sugoi Translator with Fairseq
+Mod for Translator++
+=============================
+
+CLI Args:
+    -h / --help
+        Displays this message
+
+    -n / --host [hostname]
+        Set the host name / ip address to listen to
+
+    -p / --port [port number]
+        Set port number
+
+    -g / --gpu
+        Run on GPU mode instead of CPU
+
+    -c / --config
+        Set configuration with config file
+
+    -s / --silent
+        Suppress message.
+
+Example:
+    py startServer.py -s 127.0.0.1 -p 27027
+    ''')
+
+
+def init():
+    global selectedModel
+    global silent
+    global port
+    global host
+    global gpu
+
+    print("Welcome to "+CYELLOW+"YOJET SERVER"+CEND)
+    print("© Dreamsavior.")
+    print("Use arg -h to display the help menu")
+    print(CBLUE+"===================================================================================="+CEND)
+    try:
+        # Parsing argument
+        arguments, values = getopt.getopt(argumentList, options, long_options)
+        
+        # checking each argument
+        for currentArgument, currentValue in arguments:
+
+            if currentArgument in ("-h", "--Help"):
+                getHelp()
+                quit()
+            elif currentArgument in ("-c", "--config"):
+                #setConfiguration(currentValue)
+                setConfiguration()
+
+            elif currentArgument in ("-s", "--silent"):
+                silent = True
+
+            elif currentArgument in ("-n", "--host"):
+                host = currentValue
+                
+            elif currentArgument in ("-p", "--port"):
+                port = currentValue
+
+            elif currentArgument in ("-g", "--gpu"):
+                gpu=True
+            
+            elif currentArgument in ("-m", "--model"):
+                selectedModel = currentValue
+
+    except getopt.error as err:
+        # output error, and return with an error code
+        print (str(err))
+
+    processor = CYELLOW+"NO"+CEND
+    if gpu: processor = CGREEN+"YES"+CEND
+
+    print(CBEIGE,'Listening',CYELLOW, host, CBEIGE, 'port', CYELLOW, port, CBEIGE, 'use GPU:', processor, CEND)
+    print('Selected model:', selectedModel)
+    runService(host, port, gpu, silent)
+
+
+if __name__ == "__main__":
+    init()

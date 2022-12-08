@@ -1,0 +1,3 @@
+ECHO RUNNING COMMAND %*
+%*
+pause

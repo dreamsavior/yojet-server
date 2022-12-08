@@ -31,3 +31,4 @@
 .\python.exe -m pip uninstall zipp==3.8.0 -y
 .\python.exe -m pip uninstall requests==2.28.1 -y
 .\python.exe -m pip uninstall py7zr -y
+.\python.exe -m pip uninstall ctranslate2 -y

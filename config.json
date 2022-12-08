@@ -1,8 +1,8 @@
 {
   "host": "0.0.0.0",
-  "port": 14341,
-  "useGpu": false,
+  "port": 14366,
+  "useGpu": true,
   "hideConsole": false,
   "startServerOnAppOpen": false,
-  "model": "sugoi-fairseq-3.3"
+  "model": "sugoi-ct2-levi"
 }

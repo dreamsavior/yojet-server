@@ -1,0 +1,6 @@
+models/
+tests/
+
+*.7z
+
+!models/sp_model/*
